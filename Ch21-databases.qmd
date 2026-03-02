@@ -1,0 +1,103 @@
+---
+title: "Connecting to Databases from R"
+author: "Jae Jung"
+format: 
+    html:
+        toc: true
+        toc-depth: 3
+        toc-location: right-body
+        embed-resources: true
+execute:
+    freeze: auto
+---
+
+**Note**: - This chapter is based on the [R for Data Science](https://r4ds.had.co.nz/) chapter on databases, which is available online for free. I’ve adapted the code and examples to use duckdb instead of SQLite, since duckdb is faster and more powerful than SQLite.
+
+# Loading packages
+
+```{r}
+library(DBI)
+library(dbplyr)
+library(tidyverse)
+```
+
+Databases are run by database management systems (**DBMS**’s for short), which come in three basic forms:
+
+-   **Client-server** DBMS’s run on a powerful central server, which you connect to from your computer (the client). They are great for sharing data with multiple people in an organization. Popular client-server DBMS’s include PostgreSQL, MariaDB, SQL Server, and Oracle.
+
+-   **Cloud** DBMS’s, like Snowflake, Amazon’s RedShift, and Google’s BigQuery, are similar to client server DBMS’s, but they run in the cloud. This means that they can easily handle extremely large datasets and can automatically provide more compute resources as needed.
+
+-   **In-process** DBMS’s, like SQLite or duckdb, run entirely on your computer. They’re great for working with large datasets where you’re the primary user.
+
+# Connecting to a database
+
+To connect to the database from R, you’ll use a pair of packages:
+
+1.   DBI (**d**ata**b**ase **i**nterface)
+
+2.   a package tailored for the DBMS you’re connecting to:
+
+## Sample code for connecting to a client-server DBMS (MariaDB)
+
+-   create a database connection using DBI::dbConnect(). 
+    -   The first argument is the name of the DBMS you want to connect to, which is provided by the package you installed. For example, if you’re connecting to a MariaDB database, you would use RMariaDB::MariaDB().
+    -   The remaining arguments are specific to the DBMS you’re connecting to. For example, for a MariaDB database, you would need to provide the username, password, host, and database name.
+
+```{{r}}
+con <- DBI::dbConnect(
+  RMariaDB::MariaDB(),
+  username = "foo"
+)
+
+con <- DBI::dbConnect(
+  RPostgres::Postgres(), 
+  hostname = "databases.mycompany.com", 
+  port = 1234
+)
+```
+
+```{r}
+con <- DBI::dbConnect(
+  duckdb::duckdb(),
+  dbdir = "duckdb"
+)
+```
+
+## Loading data into a database
+-   To load data into a database, you can use the dbWriteTable() function from the DBI package. This function takes three arguments: 
+    1. the database connection, 
+    2. the name of the table you want to create, and 
+    3. the data frame you want to load.
+```{r}
+dbWriteTable(con, "mpg", ggplot2::mpg)
+dbWriteTable(con, "diamonds", ggplot2::diamonds)
+```
+
+## DBI Basics
+-   To list the tables in a database, use `dbListTables()`.
+```{r}
+dbListTables(con)
+```
+
+-   To read a table from the database into R, use `dbReadTable()`.
+```{r}
+con |>
+  dbReadTable("diamonds") |>
+  as_tibble()
+```
+
+-   To run a SQL query against the database, use `dbGetQuery()`.
+
+```{r}
+sql <- "
+  SELECT
+    carat, cut, clarity, color, price
+  FROM diamonds
+  WHERE cut = 'Ideal' 
+    AND color = 'D'
+"
+dbGetQuery(con, sql) |>
+  as_tibble()
+```
+
+# dbplyr Basics
