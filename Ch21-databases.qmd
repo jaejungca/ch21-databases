@@ -12,29 +12,32 @@ execute:
     freeze: auto
 ---
 
-**Note**: - This chapter is based on the [R for Data Science](https://r4ds.had.co.nz/) chapter on databases, which is available online for free. I’ve adapted the code and examples to use duckdb instead of SQLite, since duckdb is faster and more powerful than SQLite.
+**Note**: - This chapter is based on the [R for Data Science](https://r4ds.had.co.nz/) chapter on databases (Ch22), which is available online for free. I’ve adapted the code and examples to use `duckdb` instead of SQLite, since duckdb is faster and more powerful than SQLite.
 
 # Loading packages
 
 ```{r}
+# install.packages("DBI")
+# install.packages("dbplyr")
+
 library(DBI)
-library(dbplyr)
+library(dbplyr) # dplyr backend for databases
 library(tidyverse)
 ```
 
 Databases are run by database management systems (**DBMS**’s for short), which come in three basic forms:
 
--   **Client-server** DBMS’s run on a powerful central server, which you connect to from your computer (the client). They are great for sharing data with multiple people in an organization. Popular client-server DBMS’s include PostgreSQL, MariaDB, SQL Server, and Oracle.
+-   **Client-server** DBMS’s run on a powerful central server, which you connect to from your computer (the client). They are great for sharing data with multiple people in an organization. Popular client-server DBMS’s include `PostgreSQL`, `MariaDB`, `SQL Server`, and `Oracle`.
 
--   **Cloud** DBMS’s, like Snowflake, Amazon’s RedShift, and Google’s BigQuery, are similar to client server DBMS’s, but they run in the cloud. This means that they can easily handle extremely large datasets and can automatically provide more compute resources as needed.
+-   **Cloud** DBMS’s, like `Snowflake`, Amazon’s `RedShift`, and Google’s `BigQuery`, are similar to client server DBMS’s, but they run in the cloud. This means that they can easily handle extremely large datasets and can automatically provide more compute resources as needed.
 
--   **In-process** DBMS’s, like SQLite or duckdb, run entirely on your computer. They’re great for working with large datasets where you’re the primary user.
+-   **In-process** DBMS’s, like `SQLite` or `duckdb`, run entirely on your computer. They’re great for working with large datasets where you’re the primary user.
 
 # Connecting to a database
 
 To connect to the database from R, you’ll use a pair of packages:
 
-1.  DBI (**d**ata**b**ase **i**nterface)
+1.  `DBI` (**d**ata**b**ase **i**nterface)
 
 2.  a package tailored for the DBMS you’re connecting to:
 
@@ -66,16 +69,17 @@ con <- DBI::dbConnect(
 
 ## Loading data into a database
 
--   To load data into a database, you can use the dbWriteTable() function from the DBI package. This function takes three arguments:
+-   To load data into a database, you can use the `dbWriteTable()` function from the `DBI` package. This function takes three arguments:
 
     1.  the database connection,
     2.  the name of the table you want to create, and
     3.  the data frame you want to load.
 
-    ```{r}
+```{r}
+# data()
 dbWriteTable(con, "mpg", ggplot2::mpg, overwrite = TRUE)
 dbWriteTable(con, "diamonds", ggplot2::diamonds, overwrite = TRUE)
-    ```
+```
 
 ## DBI Basics
 
@@ -111,7 +115,7 @@ dbGetQuery(con, sql) |>
 
 -   `dbplyr` is a `dplyr` backend
 
-    -   `dbplyr` is a package that provides a `dplyr` interface to databases. This means that you can use dplyr verbs to manipulate data in a database, and dbplyr will translate those verbs into SQL queries that are executed on the database.
+    -   `dbplyr` is a package that provides a `dplyr` interface to databases. This means that you can use dplyr verbs to manipulate data in a database, and `dbplyr` will translate those verbs into SQL queries that are executed on the database.
 
 -   To connect to a database using `dbplyr`, you can use the `tbl()` function from the `dplyr` package. This function takes two arguments:
 
@@ -151,7 +155,7 @@ dbGetQuery(
 )
 
 # Step 5: Connect to the diamonds table using in_schema()
-# diamonds_db <- tbl(con, in_schema("main", "diamonds")) # doesn't work because the diamonds table is in the default schema, which is not named "main"
+diamonds_db <- tbl(con, in_schema("main", "diamonds")) # doesn't work because the diamonds table is in the default schema, which is not named "main"
 diamonds_db <- tbl(con, "diamonds") # Recommended for DuckDB - no schema needed
 diamonds_db
 ```
@@ -185,24 +189,17 @@ big_diamonds_db
 
 ## Show_query() and explain()
 
--   `show_query()` is from dbplyr and `explain()` is from `dplyr`. Both functions are useful for understanding how your dplyr code is being translated into SQL and how the database will execute the query.
+-   `show_query()` is from `dbplyr` and `explain()` is from `dplyr`. Both functions are useful for understanding how your dplyr code is being translated into SQL and how the database will execute the query.
 -   To see the SQL query that `dbplyr` generates, you can use the `show_query()` function.
 
 ```{r}
 big_diamonds_db |>
   show_query()
-``
-`
--  To see the query plan that the database will use to execute the query, you can use the `
-explain()
-` function.
+```
 
+-  To see the query plan that the database will use to execute the query, you can use the `explain()` function.
 
-`
-``
-{
-  r
-}
+```{r}
 big_diamonds_db |>
   explain()
 ```
@@ -226,80 +223,41 @@ big_diamond <- big_diamonds_db |>
 #install.packages("nycflights13") --- IGNORE ---
 library(nycflights13)
 library(dbplyr)
-data()
+#data()
 flights
 planes
 
 dbplyr::copy_nycflights13(con)
-flights_db <- tbl(con, "flights")
+flights_db <- tbl(con, "flights") # lazy query object
 planes_db <- tbl(con, "planes")
-`
-`
-`
+```
 ## SQL Basics
 
--  `
-statements
-` are the basic building blocks of SQL. They are used to perform operations on the database, such as creating tables, inserting data, and querying data.
+-  `statements` are the basic building blocks of SQL. They are used to perform operations on the database, such as creating tables, inserting data, and querying data.
 
--  `
-queries
-` are a type of statement that is used to retrieve data from the database. They typically start with the `
-SELECT
-` keyword, followed by the columns you want to retrieve, and then the `
-FROM
-` keyword, followed by the table you want to query.
+-  `queries` are a type of statement that is used to retrieve data from the database. They typically start with the `SELECT` keyword, followed by the columns you want to retrieve, and then the `FROM` keyword, followed by the table you want to query.
 
--  `
-clauses
-` are the different parts of a SQL statement that specify the conditions for the operation. For example, in a `
-SELECT
-` statement, you might have a `
-WHERE
-` clause that specifies the conditions for filtering the data.
+-  `clauses` are the different parts of a SQL statement that specify the conditions for the operation. For example, in a `SELECT` statement, you might have a `WHERE` clause that specifies the conditions for filtering the data.
 
--  Five important SQL clauses are:
+-  Five important **SQL clauses** are:
 
-   -  `
-SELECT
-` is used to specify the columns you want to retrieve from the database.
+   -  `SELECT` is used to specify the columns you want to retrieve from the database.
 
-   -  `
-FROM
-` is used to specify the table you want to query.
+   -  `FROM` is used to specify the `table` you want to query.
 
-   -  `
-WHERE
-` is used to specify the conditions for filtering the data.
+   -  `WHERE` is used to specify the conditions for filtering the data.
 
-   -  `
-GROUP
-BY
-` is used to group the data by one or more columns.
+   -  `GROUP BY` is used to group the data by one or more columns.
 
-   -  `
-ORDER
-BY
-` is used to sort the data by one or more columns.
+   -  `ORDER BY` is used to sort the data by one or more columns.
 
-### `
-SELECT
-` and `
-FROM
-`
+### `SELECT` and `FROM`
 
 -  Simplist SQL query:
 
-   -  `
-SELECT * FROM
-diamonds
-` retrieves all columns and rows from the diamonds table.
+   -  `SELECT * FROM diamonds` retrieves all columns and rows from the diamonds table.
 
-`
-``
-{
-  r
-}
+```{r}
 flights_db |>
   show_query()
 
@@ -361,10 +319,11 @@ planes_db |>
   show_query()
 ```
 
-> This example also shows you how SQL does renaming. - In SQL terminology renaming is called *aliasing* and is done with `AS`. - Note that unlike mutate(), the old name is on the left and the new name is on the right.
-
--   `mutate()` is a bit more complex because it can create new columns based on existing columns.
--   In SQL, you can achieve this by using expressions in the `SELECT` clause.
+> This example also shows you how SQL does renaming. 
+> -   In SQL terminology renaming is called ***aliasing*** and is done with `AS`. 
+> -   Note that unlike mutate(), the old name is on the left and the new name is on the right.
+> -   `mutate()` is a bit more complex because it can create new columns based on existing columns.
+> -   In SQL, you can achieve this by using expressions in the `SELECT` clause.
 
 ```{r}
 flights_db |>
@@ -484,7 +443,7 @@ flights_db |>
 
 ```
 
--  You’ll also see this if you attempted to filter() a variable that you just created.
+-  You’ll also see this if you attempted to `filter()` a variable that you just created.
 ```{r}
 flights_db |> 
   mutate(year1 = year + 1) |> 
