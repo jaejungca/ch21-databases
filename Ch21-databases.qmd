@@ -1,6 +1,7 @@
 ---
-title: "Connecting to Databases from R"
+title: "Databases"
 author: "Jae Jung"
+date: "2026-03-04"
 format: 
     html:
         toc: true
@@ -33,13 +34,13 @@ Databases are run by database management systems (**DBMS**’s for short), which
 
 To connect to the database from R, you’ll use a pair of packages:
 
-1.   DBI (**d**ata**b**ase **i**nterface)
+1.  DBI (**d**ata**b**ase **i**nterface)
 
-2.   a package tailored for the DBMS you’re connecting to:
+2.  a package tailored for the DBMS you’re connecting to:
 
 ## Sample code for connecting to a client-server DBMS (MariaDB)
 
--   create a database connection using DBI::dbConnect(). 
+-   create a database connection using DBI::dbConnect().
     -   The first argument is the name of the DBMS you want to connect to, which is provided by the package you installed. For example, if you’re connecting to a MariaDB database, you would use RMariaDB::MariaDB().
     -   The remaining arguments are specific to the DBMS you’re connecting to. For example, for a MariaDB database, you would need to provide the username, password, host, and database name.
 
@@ -64,22 +65,28 @@ con <- DBI::dbConnect(
 ```
 
 ## Loading data into a database
--   To load data into a database, you can use the dbWriteTable() function from the DBI package. This function takes three arguments: 
-    1. the database connection, 
-    2. the name of the table you want to create, and 
-    3. the data frame you want to load.
-```{r}
-dbWriteTable(con, "mpg", ggplot2::mpg)
-dbWriteTable(con, "diamonds", ggplot2::diamonds)
-```
+
+-   To load data into a database, you can use the dbWriteTable() function from the DBI package. This function takes three arguments:
+
+    1.  the database connection,
+    2.  the name of the table you want to create, and
+    3.  the data frame you want to load.
+
+    ```{r}
+dbWriteTable(con, "mpg", ggplot2::mpg, overwrite = TRUE)
+dbWriteTable(con, "diamonds", ggplot2::diamonds, overwrite = TRUE)
+    ```
 
 ## DBI Basics
+
 -   To list the tables in a database, use `dbListTables()`.
+
 ```{r}
 dbListTables(con)
 ```
 
 -   To read a table from the database into R, use `dbReadTable()`.
+
 ```{r}
 con |>
   dbReadTable("diamonds") |>
@@ -101,3 +108,536 @@ dbGetQuery(con, sql) |>
 ```
 
 # dbplyr Basics
+
+-   `dbplyr` is a `dplyr` backend
+
+    -   `dbplyr` is a package that provides a `dplyr` interface to databases. This means that you can use dplyr verbs to manipulate data in a database, and dbplyr will translate those verbs into SQL queries that are executed on the database.
+
+-   To connect to a database using `dbplyr`, you can use the `tbl()` function from the `dplyr` package. This function takes two arguments:
+
+    1.  the database connection, and
+    2.  the name of the table you want to connect to.
+
+```{r}
+diamonds_db <- tbl(con, "diamonds")
+diamonds_db
+```
+
+## Schemas
+
+-   If your database has multiple schemas, you can use the `in_schema()` function to specify the schema name.
+
+```{r}
+# Step 1: List all schemas in the database
+dbGetQuery(con, "SELECT schema_name FROM information_schema.schemata") |>
+  as_tibble()
+
+# Step 2: Check ALL tables and their schemas
+dbGetQuery(
+  con,
+  "SELECT table_schema, table_name 
+                 FROM information_schema.tables"
+)
+
+# Step 3: List all available tables in your connection
+dbListTables(con)
+
+# Step 4: Find Where diamonds Table Lives
+dbGetQuery(
+  con,
+  "SELECT table_schema, table_name 
+                 FROM information_schema.tables
+                 WHERE table_name = 'diamonds'"
+)
+
+# Step 5: Connect to the diamonds table using in_schema()
+# diamonds_db <- tbl(con, in_schema("main", "diamonds")) # doesn't work because the diamonds table is in the default schema, which is not named "main"
+diamonds_db <- tbl(con, "diamonds") # Recommended for DuckDB - no schema needed
+diamonds_db
+```
+
+## Catalogs
+
+-   If your database has multiple catalogs, you can use the `in_catalog()` function to specify the catalog name.
+
+```{{r}}
+diamonds_db <- tbl(con, in_schema("information_schema", "diamonds"))
+diamonds_db <- tbl(con, in_catalog("north_america", "sales", "diamonds"))
+```
+
+-   When you connect to a table using `**tbl()**`, you get back a special object that represents the query that will be executed on the database when you manipulate the data.
+
+-   This object is called a **lazy query** because it doesn’t actually execute the query until you need to see the results.
+
+```{r}
+big_diamonds_db <- diamonds_db |>
+  filter(price > 15000) |>
+  select(carat:clarity, price)
+
+big_diamonds_db
+```
+
+::: callout-tip
+-   You can tell this object represents a database query because it prints the DBMS name at the top, and while it tells you the number of columns, it typically doesn’t know the number of rows.
+
+-   This is because finding the total number of rows usually requires executing the complete query, something we’re trying to avoid.
+:::
+
+## Show_query() and explain()
+
+-   `show_query()` is from dbplyr and `explain()` is from `dplyr`. Both functions are useful for understanding how your dplyr code is being translated into SQL and how the database will execute the query.
+-   To see the SQL query that `dbplyr` generates, you can use the `show_query()` function.
+
+```{r}
+big_diamonds_db |>
+  show_query()
+``
+`
+-  To see the query plan that the database will use to execute the query, you can use the `
+explain()
+` function.
+
+
+`
+``
+{
+  r
+}
+big_diamonds_db |>
+  explain()
+```
+
+## collect()
+
+-   To execute the query and bring the results into R, you can use the `collect()` function.
+
+```{r}
+big_diamond <- big_diamonds_db |>
+  collect()
+```
+
+# SQL
+
+-   We’ll explore the relationship between `dplyr` and `SQL` using a couple of old friends from the `nycflights13` package: flights and planes.
+
+-   These datasets are easy to get into our learning database because dbplyr comes with a function that copies the tables from nycflights13 to our database:
+
+```{r}
+#install.packages("nycflights13") --- IGNORE ---
+library(nycflights13)
+library(dbplyr)
+data()
+flights
+planes
+
+dbplyr::copy_nycflights13(con)
+flights_db <- tbl(con, "flights")
+planes_db <- tbl(con, "planes")
+`
+`
+`
+## SQL Basics
+
+-  `
+statements
+` are the basic building blocks of SQL. They are used to perform operations on the database, such as creating tables, inserting data, and querying data.
+
+-  `
+queries
+` are a type of statement that is used to retrieve data from the database. They typically start with the `
+SELECT
+` keyword, followed by the columns you want to retrieve, and then the `
+FROM
+` keyword, followed by the table you want to query.
+
+-  `
+clauses
+` are the different parts of a SQL statement that specify the conditions for the operation. For example, in a `
+SELECT
+` statement, you might have a `
+WHERE
+` clause that specifies the conditions for filtering the data.
+
+-  Five important SQL clauses are:
+
+   -  `
+SELECT
+` is used to specify the columns you want to retrieve from the database.
+
+   -  `
+FROM
+` is used to specify the table you want to query.
+
+   -  `
+WHERE
+` is used to specify the conditions for filtering the data.
+
+   -  `
+GROUP
+BY
+` is used to group the data by one or more columns.
+
+   -  `
+ORDER
+BY
+` is used to sort the data by one or more columns.
+
+### `
+SELECT
+` and `
+FROM
+`
+
+-  Simplist SQL query:
+
+   -  `
+SELECT * FROM
+diamonds
+` retrieves all columns and rows from the diamonds table.
+
+`
+``
+{
+  r
+}
+flights_db |>
+  show_query()
+
+planes_db |>
+  show_query()
+```
+
+### `WHERE` and `ORDER BY`
+
+-   control which rows are included and how they are ordered:
+
+```{r}
+flights_db |>
+  filter(dest == "LAX") |>
+  arrange(dep_delay) |>
+  show_query()
+```
+
+### GROUP BY
+
+-   `GROUP BY` is used to group the data by one or more columns. Converts the query to a summary, causing aggregation to happen:
+
+-   This is often used in conjunction with aggregate functions like `COUNT()`, `SUM()`, `AVG()`, etc.
+
+```{r}
+flights_db |>
+  group_by(origin) |>
+  summarise(num_flights = n()) |>
+  show_query()
+```
+
+::: callout-tip
+### `SQL`
+
+-   Case doesn’t matter in SQL, so you can write your queries in uppercase, lowercase, or a mix of both. However, it’s common practice to write SQL keywords in uppercase to make them stand out from the rest of the query.
+
+-   Order matters in SQL, so you need to follow the correct syntax when writing your queries.
+
+-   You must always write the clauses in the order `SELECT`, `FROM`, `WHERE`, `GROUP BY`, `ORDER BY`.
+
+-   Interestingly, this order doesn’t match how the clauses are actually evaluated which is first `FROM`, then `WHERE`, `GROUP BY`, `SELECT`, and `ORDER BY`.
+:::
+
+## SELECT
+
+-   The SELECT clause is the workhorse of queries and performs the same job as `select()`,`mutate()`, `rename()`, `relocate()`, and, as you’ll learn in the next section, summarize().
+
+```{r}
+planes_db |>
+  select(tailnum, type, manufacturer, model, year) |>
+  show_query()
+
+planes_db |>
+  rename(tail_number = tailnum) |>
+  show_query()
+
+planes_db |>
+  relocate(tailnum, .after = model) |>
+  show_query()
+```
+
+> This example also shows you how SQL does renaming. - In SQL terminology renaming is called *aliasing* and is done with `AS`. - Note that unlike mutate(), the old name is on the left and the new name is on the right.
+
+-   `mutate()` is a bit more complex because it can create new columns based on existing columns.
+-   In SQL, you can achieve this by using expressions in the `SELECT` clause.
+
+```{r}
+flights_db |>
+  mutate(speed = distance / (air_time / 60)) |>
+  show_query()
+```
+
+## FROM
+
+-   The `FROM` clause specifies the table you want to query.
+
+```{r}
+flights_db |>
+  group_by(origin) |>
+  summarise(num_flights = n()) |>
+  show_query()
+```
+
+## GROUP BY
+
+-   `group_by()` is translated to the `GROUP BY` clause and `summarize()` is translated to the `SELECT` clause:
+
+```{r}
+diamonds_db |>
+  group_by(cut) |>
+  summarise(
+    n = n(),
+    mean_price = mean(price, na.rm = TRUE)
+  ) |>
+  show_query()
+```
+
+## WHERE
+
+-   `filter()` is translated to the `WHERE` clause:
+
+```{r}
+flights_db |>
+  filter(dest == "LAX" & dep_delay > 60) |>
+  show_query()
+
+flights_db |>
+  filter(dest == "LAX", dep_delay > 60) |>
+  show_query()
+
+flights_db |>
+  filter(dest == "LAX" | dest == "SFO") |>
+  show_query()
+```
+
+::: callout-important
+-   `|` becomes OR and `&` becomes AND.
+-   SQL uses `=` for comparison, not `==`.
+-   SQL uses only `''` for strings, not `""`. In SQL, `""` is used to identify variables, like R’s \`\`.
+:::
+
+-  `IN` is a convenient way to check if a value is in a set of values as in `%in%` in R.
+
+```{r}
+flights_db |>
+  filter(dest %in% c("LAX", "SFO")) |>
+  show_query()
+```
+
+-  `NULL` is a special value in SQL that represents missing data. It is different from `NA` in R. In SQL, you cannot use `=` to compare a value to `NULL`. Instead, you need to use `IS NULL` or `IS NOT NULL`.
+
+
+```{r}
+flights_db |> 
+  group_by(dest) |>
+  summarize(delay = mean(arr_delay)) |> 
+  show_query()
+
+flights_db |>
+  group_by(dest) |>
+  summarize(delay = mean(arr_delay, na.rm = TRUE)) |>
+  show_query()
+```
+
+-  NULL values are ignored by aggregate functions like `AVG()`, `SUM()`, etc. However, if all values in a group are `NULL`, the result will be `NULL` instead of 0 or some other value. This is why it’s important to use `na.rm = TRUE` when calculating aggregates in SQL.
+
+```{r}
+flights_db |> 
+  filter(!is.na(arr_delay)) |>
+  show_query()
+```
+
+-  If you filter() a variable that you created using a summarize, dbplyr will generate a `HAVING` clause, rather than a `WHERE` clause. 
+```{r}
+flights_db |>
+  group_by(dest) |>
+  summarize(delay = mean(arr_delay, na.rm = TRUE)) |>
+  filter(!is.na(delay)) |>
+  show_query()
+```
+
+## ORDER BY
+-   `arrange()` is translated to the `ORDER BY` clause:
+
+```{r}
+flights_db |> 
+  arrange(year, month, day, desc(dep_delay)) |>
+  show_query()
+```
+
+## Subqueries
+-   A **subquery** is a query that is nested inside another query. In SQL, you can use subqueries to perform more complex operations.
+
+-  `dbplyr` typically uses subqueries to work around limitations of SQL.
+```{r}
+flights_db |> 
+  mutate(
+    year1 = year + 1,
+    year2 = year1 + 1
+  ) |> 
+  show_query()
+
+```
+
+-  You’ll also see this if you attempted to filter() a variable that you just created.
+```{r}
+flights_db |> 
+  mutate(year1 = year + 1) |> 
+  filter(year1 == 2014) |> 
+  show_query()
+```
+
+## Joins
+
+-   `dbplyr` supports all the same joins as `dplyr`, and they are translated to the corresponding SQL join syntax.
+
+```{r}
+flights_db |> 
+  left_join(planes_db |> rename(year_built = year), join_by(tailnum)) |> 
+  show_query()
+```
+
+-  `inner_join()`, `right_join()`, and `full_join()`
+```{r}
+flights_db |> 
+  inner_join(planes_db |> rename(year_built = year), join_by(tailnum)) |> 
+  show_query()
+
+flights_db |> 
+  right_join(planes_db |> rename(year_built = year), join_by(tailnum)) |> 
+  show_query()
+
+flights_db |> 
+  full_join(planes_db |> rename(year_built = year), join_by(tailnum)) |> 
+  show_query()
+```
+
+## Other verb translations
+
+-   `distinct()` is translated to the `DISTINCT` keyword in SQL.
+-   `slice()` is translated to the `LIMIT` clause in SQL.
+-   `head()` is translated to `LIMIT 6` in SQL.
+-   `summarise()` without `group_by()` is translated to an aggregate function without a `GROUP BY` clause, which means it will return a single row with the aggregate value for the entire table.
+-   `dbplyr` also translates other verbs like distinct(), slice_*(), and intersect(), and a growing selection of tidyr functions like pivot_longer() and pivot_wider(). The easiest way to see the full set of what’s currently available is to visit the dbplyr website: https://dbplyr.tidyverse.org/reference/.
+
+## Exercises
+
+- Explain what each of the following SQL queries does, and then write the equivalent dplyr code to achieve the same result. Use `show_query()` to verify that your dplyr code generates the same SQL query.
+
+```{r}
+SELECT * 
+FROM flights
+WHERE dep_delay < arr_delay
+
+SELECT *, distance / (air_time / 60) AS speed
+FROM flights
+```
+
+- Answers
+
+```{r}
+
+```
+
+# Summary
+-  In this chapter you learned how to access data from databases. We focused on `dbplyr`, a dplyr “backend” that allows you to write the dplyr code you’re familiar with, and have it be automatically translated to SQL. 
+
+-  It’s important to learn some SQL because it’s the most commonly used language for working with data and knowing some will make it easier for you to communicate with other data folks who don’t use R.
+
+-  Resources for learning SQL:
+
+   -  [SQL for Data Science](https://sqlfordatascientists.com/) is a great online course that covers the basics of SQL and how to use it for data analysis.
+
+   -  [SQLZoo](https://sqlzoo.net/) is an interactive website that allows you to practice writing SQL queries against a variety of databases.
+
+   -  [Mode SQL Tutorial](https://mode.com/sql-tutorial/) is another interactive website that provides a comprehensive introduction to SQL with exercises and real-world examples.
+
+# bigrquery
+
+   -  bigrquery is a package that provides an interface to Google BigQuery, a cloud-based data warehouse. It allows you to run SQL queries against your BigQuery datasets directly from R.
+
+   -  downloading ga4 public data into R using bigrquery:
+
+# Connecting R to BigQuery and Analyzing GA4 Data
+
+## Overview
+
+Steps:
+1. Install required packages
+2. Authenticate with Google
+3. Connect to BigQuery
+4. Query GA4 public data
+5. Analyze and visualize
+
+## Step 1: Install Required Packages
+```{r}
+# Install packages
+# install.packages("bigrquery")    # BigQuery interface
+# install.packages("DBI")          # database interface
+# install.packages("dbplyr")       # dplyr backend for databases
+# install.packages("tidyverse")    # data manipulation and visualization
+
+# Load packages
+library(bigrquery)
+library(DBI)
+library(dbplyr)
+library(tidyverse)
+```
+## Step 2: Authenticate with Google
+
+```{r}
+# Method 1: Interactive authentication (easiest!)
+bq_auth()
+# This will:
+# 1. Open your browser automatically
+# 2. Ask you to log in to Google
+# 3. Ask you to grant permissions
+# 4. Return you to R authenticated ✅
+
+# Method 2: Authenticate with specific email
+bq_auth(email = "your-email@gmail.com")
+
+# Verify authentication worked
+bq_user()
+# Should show your Google account email ✅
+```
+## Step 3: Connect to BigQuery
+
+```{r}
+# Set up your project ID
+# This is your Google Cloud project ID
+# Find it at: console.cloud.google.com
+project_id <- "your-google-cloud-project-id"
+
+# Create BigQuery connection
+con <- dbConnect(
+  bigrquery::bigquery(),
+  project = "bigquery-public-data",    # public data project
+  dataset = "ga4_obfuscated_sample_ecommerce",  # GA4 dataset
+  billing = project_id                 # YOUR project pays for queries
+)
+
+# Verify connection
+con
+```
+
+```{r}
+# List available tables in GA4 dataset
+dbListTables(con)
+
+# You should see:
+# [1] "events_20201101"
+# [2] "events_20201102"
+# [3] "events_20201103"
+# ... and so on
+```
+## Step 4: Query GA4 Public Data
+
+```{r}
+
+```

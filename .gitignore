@@ -4,3 +4,6 @@
 .Ruserdata
 duckdb
 duckdb.wal
+bigrquery.qmd
+images/
+.posit/
